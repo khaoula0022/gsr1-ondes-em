@@ -195,18 +195,32 @@ st.set_page_config(page_title="GSR1 — Ondes EM avion ↔ sous-marin", layout="
 
 st.markdown("""
 <style>
-  .main-title { font-size: 1.9rem; font-weight: 700; color: #0b3d66; }
-  .subtitle { font-size: 1.05rem; color: #444; }
-  .metric-card { background:#f2f7fb; border:1px solid #c9dcea; border-radius:10px;
-                 padding:10px 12px; text-align:center; }
-  .metric-card .val { font-size:1.35rem; font-weight:700; color:#0b3d66; }
-  .metric-card .lab { font-size:0.8rem; color:#555; }
-  .ok { color:#137333; font-weight:600; }
+  .banner { background: linear-gradient(120deg, #0b3d66 0%, #14639e 55%, #1b8ac4 100%);
+            border-radius: 14px; padding: 20px 24px; color: #fff;
+            box-shadow: 0 4px 14px rgba(11,61,102,.25); margin-bottom: 14px; }
+  .banner h1 { margin: 0 0 6px 0; font-size: 1.7rem; }
+  .banner p { margin: 0; font-size: 1rem; opacity: .92; }
+  .badge { display: inline-block; background: rgba(255,255,255,.18); border: 1px solid rgba(255,255,255,.45);
+           border-radius: 999px; padding: 2px 12px; font-size: .8rem; margin: 8px 6px 0 0; }
+  .metric-card { background: linear-gradient(180deg, #ffffff, #eef5fb);
+                 border: 1px solid #c9dcea; border-top: 4px solid #14639e;
+                 border-radius: 12px; padding: 12px; text-align: center;
+                 box-shadow: 0 2px 8px rgba(11,61,102,.10); }
+  .metric-card .val { font-size: 1.45rem; font-weight: 800; color: #0b3d66; }
+  .metric-card .lab { font-size: 0.82rem; color: #555; }
+  .ok { color: #137333; font-weight: 600; }
+  section[data-testid="stSidebar"] { background: #f2f7fb; }
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown('<div class="main-title">🌊 GSR1 — Propagation des ondes EM entre un avion et un sous-marin</div>', unsafe_allow_html=True)
-st.markdown('<div class="subtitle">Simulation interactive : interface air / eau de mer, coefficients de réflexion/transmission et <b>épaisseur de peau</b> δ(f, σ). Incidence normale, ondes planes.</div>', unsafe_allow_html=True)
+st.markdown("""
+<div class="banner">
+  <h1>🌊 GSR1 — Ondes EM entre un avion et un sous-marin</h1>
+  <p>Simulation interactive : interface air / eau de mer, coefficients Γ/τ et <b>épaisseur de peau</b> δ(f, σ) — incidence normale, ondes planes.</p>
+  <span class="badge">✈️ Avion</span><span class="badge">🌊 Eau de mer σ = 4 S/m</span>
+  <span class="badge">🧴 δ = 1/√(πfμσ)</span><span class="badge">🎬 Animation incluse</span>
+</div>
+""", unsafe_allow_html=True)
 
 # --- état partagé : curseurs <-> saisie numérique <-> préréglages ---
 for _k, _v in {"logf": 4.0, "sigma": SIGMA_SEA, "epsr": EPSR_SEA, "z_sub": 15.0,
@@ -500,3 +514,4 @@ for label, ok, detail in checks:
 st.caption("GSR1 — Mini-projet de simulation · Modèle simplifié deux milieux, incidence normale. "
            "Ne prétend pas à lui seul établir la faisabilité pratique d'une liaison avion–sous-marin "
            "(antennes, bruit, couplage magnétique, etc. exclus du périmètre).")
+
