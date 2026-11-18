@@ -190,6 +190,121 @@ def make_animation_gif(f_r, sigma_r, epsr_r):
     return data
 
 
+# ---------------------------------------------------------------- animation scène
+@st.cache_data(show_spinner=False)
+def make_scene_gif(f_r, sigma_r, epsr_r, z_r):
+    """Scène quasi réaliste : avion dans le ciel, mer, sous-marin en profondeur.
+    Les ondes partent de l'avion, traversent la surface puis s'éteignent dans
+    l'eau sur l'épaisseur de peau δ. Le sous-marin 'brille' selon le champ reçu."""
+    from matplotlib.patches import Ellipse, Polygon, Circle, FancyArrowPatch
+    res = compute(f_r, sigma_r, epsr_r)
+    alpha = res["alpha"]
+    y_surf = 15.0
+    y_sub = y_surf - min(float(z_r), 50.0) / 50.0 * 12.0     # profondeur -> position scène
+    y_delta = y_surf - min(res["delta"], 50.0) / 50.0 * 12.0  # repère δ
+    recv = np.exp(-alpha * float(z_r))                        # champ reçu / E(0+)
+    db_recv = 20 * np.log10(abs(res["tau"]) * recv) if recv > 0 else -999
+
+    # dégradés ciel / mer (RGBA, absorption croissante avec la profondeur)
+    ny = 80
+    sky_rgba = np.zeros((ny, 4, 4))
+    for j in range(ny):
+        frac = j / (ny - 1)                                   # 0 bas -> 1 haut
+        sky_rgba[j, :, 0], sky_rgba[j, :, 1], sky_rgba[j, :, 2] = 0.55 + 0.45*frac, 0.78 + 0.22*frac, 0.95
+        sky_rgba[j, :, 3] = 1.0
+    sea_rgba = np.zeros((ny, 4, 4))
+    for j in range(ny):
+        frac = j / (ny - 1)                                   # 0 bas (profond) -> 1 surface
+        sea_rgba[j, :, 0], sea_rgba[j, :, 1], sea_rgba[j, :, 2] = 0.02, 0.16 + 0.10*frac, 0.38 + 0.22*frac
+        sea_rgba[j, :, 3] = 0.75 + 0.25 * (1 - frac)          # plus opaque en profondeur
+
+    fig, ax = plt.subplots(figsize=(11, 5.2))
+    ax.set_xlim(-11, 11); ax.set_ylim(0, 30); ax.axis("off")
+
+    def draw_frame(i):
+        ax.clear()
+        ax.set_xlim(-11, 11); ax.set_ylim(0, 30); ax.axis("off")
+        t = 2 * np.pi * i / 48.0
+        bob = 0.18 * np.sin(t)
+
+        # fonds
+        ax.imshow(sky_rgba, extent=[-11, 11, y_surf, 30], aspect="auto", origin="lower", zorder=0)
+        ax.imshow(sea_rgba, extent=[-11, 11, 0, y_surf], aspect="auto", origin="lower", zorder=0)
+        ax.plot([-11, 11], [y_surf, y_surf], color="white", lw=2.5, zorder=3)
+        ax.text(-10.6, 29.2, "AIR", fontsize=13, weight="bold", color="#0b3d66")
+        ax.text(-10.6, 13.6, "EAU DE MER", fontsize=13, weight="bold", color="white")
+        ax.text(-10.6, 15.5, "— surface de la mer —", fontsize=9, color="#0b3d66")
+
+        # anneaux d'ondes émis par l'avion
+        for k in range(3):
+            r = ((i * 0.55 + k * 8.0) % 24.0) + 2.0
+            a = max(0.0, 1.0 - r / 26.0) * 0.55
+            ax.add_patch(Ellipse((0, 26 + bob), width=r * 1.7, height=r,
+                                 fill=False, edgecolor="#00c2ff", lw=1.6, alpha=a, zorder=2))
+
+        # avion (vue de côté, vers la droite)
+        ax.add_patch(Ellipse((0, 26 + bob), width=4.6, height=1.15,
+                             facecolor="#e8eef4", edgecolor="#0b3d66", lw=1.6, zorder=5))
+        ax.add_patch(Polygon([[-0.4, 26.5 + bob], [0.9, 28.3 + bob], [1.7, 28.3 + bob], [0.9, 26.5 + bob]],
+                             closed=True, facecolor="#b9c9d8", edgecolor="#0b3d66", lw=1.2, zorder=5))
+        ax.add_patch(Polygon([[-2.2, 25.9 + bob], [-3.1, 24.6 + bob], [-2.3, 24.6 + bob], [-1.5, 25.9 + bob]],
+                             closed=True, facecolor="#b9c9d8", edgecolor="#0b3d66", lw=1.2, zorder=5))
+        ax.add_patch(Polygon([[2.3, 26.3 + bob], [3.1, 27.2 + bob], [3.1, 25.8 + bob]],
+                             closed=True, facecolor="#d62728", edgecolor="#0b3d66", lw=1.2, zorder=5))
+        ax.text(0, 29.3, "✈ AVION (émetteur)", fontsize=12, weight="bold",
+                color="#0b3d66", ha="center")
+        # faisceau d'émission vers la mer
+        ax.add_patch(Polygon([[-1.6, 25.4 + bob], [1.6, 25.4 + bob], [3.2, y_surf], [-3.2, y_surf]],
+                             closed=True, facecolor="#00c2ff", alpha=0.10, edgecolor="none", zorder=1))
+
+        # sonde verticale : onde E(z,t) qui décroît dans l'eau
+        yy = np.linspace(0.3, 28.5, 500)
+        dist = 26.0 - yy
+        amp = np.where(yy > y_surf, 1.0, 0.45 * np.exp(-(y_surf - yy) / 4.0))
+        wave = amp * np.cos(t - 0.9 * dist)
+        ax.plot(-5.0 + 1.1 * wave[yy > y_surf], yy[yy > y_surf], color="#1f77b4", lw=2, zorder=4)
+        ax.plot(-5.0 + 1.1 * wave[yy <= y_surf], yy[yy <= y_surf], color="#7CFC00", lw=2, zorder=4)
+        ax.text(-5.0, 0.6, "onde E(z,t)", fontsize=9, color="white", ha="center")
+
+        # repère épaisseur de peau δ (à droite)
+        ax.plot([8.2, 8.2], [y_delta, y_surf], color="#ffd54a", lw=3, zorder=4)
+        ax.text(8.5, (y_delta + y_surf) / 2, f"δ = {fmt_m(res['delta'])}",
+                fontsize=10, weight="bold", color="#ffd54a", va="center")
+
+        # sous-marin (vue de côté) + halo selon le champ reçu
+        glow_r = 1.6 + 2.2 * recv
+        ax.add_patch(Circle((4.0, y_sub), radius=glow_r, facecolor="#7CFC00",
+                            alpha=0.10 + 0.35 * recv, edgecolor="none", zorder=3))
+        ax.add_patch(Ellipse((4.0, y_sub), width=5.2, height=1.7,
+                             facecolor="#3a4a5a", edgecolor="#ffd54a", lw=1.6, zorder=5))
+        ax.add_patch(Polygon([[3.4, y_sub + 0.7], [4.6, y_sub + 0.7], [4.6, y_sub + 1.5], [3.4, y_sub + 1.5]],
+                             closed=True, facecolor="#3a4a5a", edgecolor="#ffd54a", lw=1.2, zorder=5))
+        ax.add_patch(Polygon([[6.6, y_sub], [7.5, y_sub + 0.6], [7.5, y_sub - 0.6]],
+                             closed=True, facecolor="#ffd54a", edgecolor="#3a4a5a", lw=1.0, zorder=5))
+        ax.text(4.0, y_sub - 1.6, f"SOUS-MARIN  z = {float(z_r):.0f} m",
+                fontsize=11, weight="bold", color="white", ha="center")
+        ax.text(4.0, y_sub - 2.6, f"champ reçu : {db_recv:.0f} dB",
+                fontsize=9, color="#7CFC00", ha="center")
+
+        ax.set_title(f"f = {fmt_f(f_r)} · σ = {sigma_r:.1f} S/m · "
+                     f"δ = {fmt_m(res['delta'])} · |Γ| = {abs(res['gamma']):.3f} · |τ| = {abs(res['tau']):.1e}",
+                     fontsize=11, weight="bold", color="#0b3d66", pad=10)
+
+    anim = FuncAnimation(fig, draw_frame, frames=48, interval=90)
+    import tempfile, os
+    with tempfile.NamedTemporaryFile(suffix=".gif", delete=False) as tmp:
+        tmp_path = tmp.name
+    try:
+        anim.save(tmp_path, writer=PillowWriter(fps=11))
+        with open(tmp_path, "rb") as fh:
+            data = fh.read()
+    finally:
+        plt.close(fig)
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+    return data
+
+
 # ---------------------------------------------------------------- interface
 st.set_page_config(page_title="GSR1 — Ondes EM avion ↔ sous-marin", layout="wide")
 
@@ -209,7 +324,15 @@ st.markdown("""
   .metric-card .val { font-size: 1.45rem; font-weight: 800; color: #0b3d66; }
   .metric-card .lab { font-size: 0.82rem; color: #555; }
   .ok { color: #137333; font-weight: 600; }
-  section[data-testid="stSidebar"] { background: #f2f7fb; }
+  /* Barre latérale : fond clair + texte foncé forcé (toujours lisible) */
+  section[data-testid="stSidebar"] { background: #eaf2f9 !important; }
+  section[data-testid="stSidebar"] * { color: #0b3d66 !important; }
+  section[data-testid="stSidebar"] button { background: #0b3d66 !important;
+      color: #ffffff !important; border: 1px solid #0b3d66 !important; }
+  section[data-testid="stSidebar"] button p { color: #ffffff !important; }
+  section[data-testid="stSidebar"] input { background: #ffffff !important;
+      color: #0b3d66 !important; border: 1px solid #9db8d2 !important; }
+  section[data-testid="stSidebar"] [data-testid="stSlider"] label { color: #0b3d66 !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -454,20 +577,21 @@ with tab3:
         st.info("Réglez la profondeur z > 0 pour calculer la fréquence optimale.")
 
 with tab4:
-    st.subheader("🎬 Animation : onde incidente, réfléchie et transmise")
-    st.caption("Panneau gauche : schéma de l'interface (phase compressée, onde transmise amplifiée "
-               "pour être visible — facteur indiqué). Panneau droit : atténuation **réelle** en mètres, "
-               "amplitudes exactes E(z,t)/E(0⁺) = exp(−αz)·cos(ωt − βz).")
-    gif = make_animation_gif(round(f, 3), round(float(sigma), 2), float(epsr))
-    st.image(gif, caption=f"Propagation à f = {fmt_f(f)}, σ = {sigma:.1f} S/m — "
+    st.subheader("🎬 Animation : avion → mer → sous-marin (scène quasi réaliste)")
+    st.caption("L'avion émet des ondes (anneaux bleus) vers la mer. La sonde verticale à gauche "
+               "montre l'onde E(z,t) : forte dans l'air, elle s'éteint dans l'eau sur l'épaisseur "
+               "de peau δ (repère jaune). Le sous-marin **brille** selon le champ qu'il reçoit : "
+               "déplacez le curseur z ou changez f pour voir la lueur s'éteindre.")
+    gif = make_scene_gif(round(f, 3), round(float(sigma), 2), float(epsr), float(z_sub))
+    st.image(gif, caption=f"Propagation à f = {fmt_f(f)}, σ = {sigma:.1f} S/m, z = {z_sub:.0f} m — "
                           f"δ = {fmt_m(res['delta'])}, |Γ| = {abs(res['gamma']):.3f}, |τ| = {abs(res['tau']):.2e}",
              use_container_width=True)
     st.markdown(
-        "Lecture : dans l'air, l'onde incidente (bleue) et l'onde réfléchie (rouge) forment une "
-        "figure quasi stationnaire car |Γ| ≈ 1 (réflexion presque totale, déphasage ≈ 180°). "
-        "Dans l'eau, l'onde transmise (verte, panneau droit) se propage avec une longueur d'onde "
-        f"λ₂ = {fmt_m(res['lambda2'])} et s'éteint sur δ = {fmt_m(res['delta'])} : "
-        "au-delà de quelques épaisseurs de peau, le champ est pratiquement nul.")
+        "Lecture : dans l'air, l'onde incidente et l'onde réfléchie forment une figure quasi "
+        "stationnaire car |Γ| ≈ 1 (réflexion presque totale). Dans l'eau, l'onde transmise se "
+        f"propage avec une longueur d'onde λ₂ = {fmt_m(res['lambda2'])} et s'éteint sur "
+        f"δ = {fmt_m(res['delta'])} : au-delà de quelques épaisseurs de peau, le champ est "
+        "pratiquement nul — le sous-marin ne reçoit plus rien (halo éteint).")
 
 # ---------------------------------------------------------------- théorie
 st.divider()
